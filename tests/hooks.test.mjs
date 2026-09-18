@@ -7,12 +7,12 @@
 //   node tests/hooks.test.mjs
 
 import {spawnSync, spawn} from 'node:child_process';
-import {mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, mkdtempSync} from 'node:fs';
+import {mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, mkdtempSync, symlinkSync} from 'node:fs';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 
-import {lockKey, extractFilePath, readLeaseMinutes} from '../plugins/teamwork/hooks/_lib.mjs';
+import {lockKey, extractFilePath, readLeaseMinutes, isInsideDirectory} from '../plugins/teamwork/hooks/_lib.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOOKS = join(REPO, 'plugins', 'teamwork', 'hooks');
@@ -416,8 +416,39 @@ console.log('\nownership-lock.mjs - path normalisation');
 	}
 }
 
-check('extractFilePath: file_path', extractFilePath({tool_input: {file_path: 'a.ts'}}) === 'a.ts');
-check('extractFilePath: filePath', extractFilePath({tool_input: {filePath: 'b.ts'}}) === 'b.ts');
+// A path reached through a symlinked directory must produce the same key as the
+// direct path, and a file that does not exist yet inside a symlinked directory must
+// still count as inside it.
+//
+// This is the macOS /var -> /private/var case, and it silently disabled the Bash
+// guard there: the working directory resolved to /private/var/... while a target
+// file that had not been created yet stayed /var/..., so nothing ever compared as
+// nested. Caught by CI on macos-latest, not locally.
+{
+	mkdirSync(join(WORK, 'real-dir'), {recursive: true});
+	let linked = false;
+	try {
+		symlinkSync(join(WORK, 'real-dir'), join(WORK, 'link-dir'), process.platform === 'win32' ? 'junction' : 'dir');
+		linked = true;
+	} catch {
+		linked = false;
+	}
+	if (linked) {
+		const direct = lockKey('real-dir/new-file.ts', WORK);
+		const viaLink = lockKey('link-dir/new-file.ts', WORK);
+		check('symlinked directory: same key as the direct path', direct === viaLink, `${direct} vs ${viaLink}`);
+		check(
+			'symlinked directory: a not-yet-existing file inside it counts as inside the working directory',
+			isInsideDirectory('link-dir/new-file.ts', WORK),
+		);
+		check('directory boundary: a sibling directory is outside', !isInsideDirectory(join(WORK, '..', 'elsewhere.ts'), WORK));
+		check('directory boundary: the working directory itself is inside', isInsideDirectory('.', WORK));
+	} else {
+		console.log('  SKIP  symlinked directory checks (this platform would not create a symlink)');
+	}
+}
+
+check('extractFilePath: file_path', extractFilePath({tool_input: {file_path: 'a.ts'}}) === 'a.ts');check('extractFilePath: filePath', extractFilePath({tool_input: {filePath: 'b.ts'}}) === 'b.ts');
 check('extractFilePath: absolute_path', extractFilePath({tool_input: {absolute_path: 'c.ts'}}) === 'c.ts');
 check('extractFilePath: path', extractFilePath({tool_input: {path: 'd.ts'}}) === 'd.ts');
 check('extractFilePath: empty string is not a path', extractFilePath({tool_input: {file_path: ''}}) === undefined);

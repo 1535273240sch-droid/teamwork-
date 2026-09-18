@@ -20,7 +20,7 @@ import {
 	realpathSync,
 	appendFileSync,
 } from 'node:fs';
-import {join, dirname, resolve} from 'node:path';
+import {join, dirname, resolve, basename, sep} from 'node:path';
 import {createHash} from 'node:crypto';
 
 export const STATE_DIR = '.teamwork';
@@ -97,22 +97,48 @@ export function sha1(value) {
 	return createHash('sha1').update(value).digest('hex').slice(0, 12);
 }
 
+// Resolve symlinks in the part of the path that exists, and keep the rest verbatim.
+//
+// realpathSync alone throws for a file that has not been created yet, and falling
+// back to the unresolved path is not good enough. On macOS /var is a symlink to
+// /private/var, so the working directory resolves to /private/var/... while a
+// not-yet-existing file inside it stays /var/..., and the two then never compare as
+// nested. That silently turned the Bash guard off on macOS - every candidate target
+// was judged to be outside the campaign - and only CI caught it.
+function realpathBestEffort(abs) {
+	let current = abs;
+	const tail = [];
+	for (;;) {
+		try {
+			const real = realpathSync(current);
+			return tail.length === 0 ? real : join(real, ...tail.reverse());
+		} catch {
+			const parent = dirname(current);
+			if (parent === current) return abs; // reached the filesystem root
+			tail.push(basename(current));
+			current = parent;
+		}
+	}
+}
+
 // Normalise to a stable comparison key.
 //
 // Windows and macOS (APFS/HFS+) are case-insensitive by default, so /src/Core.ts
 // and /src/core.ts are the same file and must not produce two different keys.
-// macOS also stores filenames in NFD, so text is normalised to NFC, and symlinked
-// paths are resolved to their target when the target exists.
+// macOS also stores filenames in NFD, so text is normalised to NFC.
 export function lockKey(filePath, cwd) {
-	let abs = resolve(cwd, filePath);
-	try {
-		abs = realpathSync(abs);
-	} catch {
-		// Path does not exist yet (a new file): keep the resolved form.
-	}
-	const normalised = abs.normalize('NFC');
+	const normalised = realpathBestEffort(resolve(cwd, filePath)).normalize('NFC');
 	const caseInsensitive = process.platform === 'win32' || process.platform === 'darwin';
 	return caseInsensitive ? normalised.toLowerCase() : normalised;
+}
+
+// True when `target` resolves to the working directory itself or to something
+// inside it. Paths outside the campaign are not the campaign's business.
+export function isInsideDirectory(target, cwd) {
+	const abs = lockKey(target, cwd);
+	const base = lockKey('.', cwd);
+	const root = base.endsWith(sep) ? base : base + sep;
+	return abs === base || abs.startsWith(root);
 }
 
 // Best-effort owner identity, strongest signal first. `source` is recorded so the

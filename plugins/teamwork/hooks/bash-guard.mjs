@@ -27,6 +27,7 @@ import {
 	statePaths,
 	loadCampaign,
 	isCampaignActive,
+	isInsideDirectory,
 	lockKey,
 	resolveOwner,
 	readStore,
@@ -39,7 +40,6 @@ import {
 	readLeaseMinutes,
 	existsSync,
 } from './_lib.mjs';
-import {resolve, sep} from 'node:path';
 
 // Patterns whose target file we can name with reasonable confidence.
 const TARGET_PATTERNS = [
@@ -120,12 +120,7 @@ function extractTargets(command) {
 }
 
 // Only paths inside the session working directory belong to the campaign.
-function insideCwd(target, cwd) {
-	const abs = lockKey(target, cwd);
-	const base = lockKey('.', cwd);
-	const root = base.endsWith(sep) ? base : base + sep;
-	return abs === base || abs.startsWith(root);
-}
+const insideCwd = isInsideDirectory;
 
 const raw = await readStdin();
 
