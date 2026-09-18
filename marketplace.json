@@ -8,9 +8,8 @@
       "source": "./teamwork",
       "description": "Collaborative multi-agent team: scoping interview, role roster, exclusive file ownership, verification-driven convergence.",
       "version": "0.1.0",
-      "category": "Reasoning",
-      "tags": ["multi-agent", "orchestration", "long-horizon", "verification", "research"],
-      "strict": true
+      "category": "Developer Tools",
+      "tags": ["multi-agent", "orchestration", "long-horizon", "verification", "research"]
     }
   ]
 }
