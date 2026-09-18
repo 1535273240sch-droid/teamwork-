@@ -1,6 +1,6 @@
 ---
 name: challenger
-description: 在一个方案、假设或结论被别人建在上面之前，尝试把它证伪。用在计划里承重的前提上——度量口径、基准、基线、因果故事——以及战役即将依赖的任何结论上。它攻击的是前提，不是代码。
+description: 在一个方案、假设或结论被别人建在上面之前，尝试把它证伪。用在计划里承重的前提上——度量口径、基准、基线、因果故事——以及战役即将依赖的任何结论上。它攻击的是前提，不是代码。 Tries to falsify a plan, an assumption, or a conclusion before anything gets built on it. Use on load-bearing premises - the measurement, the baseline, the causal story - and on any conclusion the campaign is about to depend on. Attacks the premise, not the code.
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
 disallowedTools: Edit, Write
 maxTurns: 40

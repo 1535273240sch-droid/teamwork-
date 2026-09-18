@@ -1,6 +1,6 @@
 ---
 name: success-auditor
-description: 战役的最后一关。等所有里程碑都做完之后，最后用它，判断宪章定义的"完成"是否真的达成——而不是里程碑只是"通过了"。专门防目标漂移和指标造假。
+description: 战役的最后一关。等所有里程碑都做完之后，最后用它，判断宪章定义的"完成"是否真的达成——而不是里程碑只是"通过了"。专门防目标漂移和指标造假。 The final gate for a campaign. Use it after every milestone is done, to judge whether the charter definition of done was actually achieved rather than whether the milestones merely passed. Guards specifically against goal drift and metric gaming.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Edit, Write
 maxTurns: 40

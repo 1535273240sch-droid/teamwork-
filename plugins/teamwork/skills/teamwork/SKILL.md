@@ -5,7 +5,7 @@ when_to_use: The user invokes /teamwork, asks for a multi-agent team, asks for a
 license: MIT
 metadata:
   author: Teamwork for ZCode
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # Teamwork — Phase 1: Specify What, Not How
@@ -16,7 +16,9 @@ The output of this phase is a **reviewable charter** the human approves. Only th
 
 ## Step 1 — Interview
 
-Fill all five sections. Ask about anything you cannot infer; state and flag anything you assume. Ask in batches, not one question at a time.
+**Use the interactive question panel, not a wall of text.** Ask through the platform's multiple-choice question UI, batched by topic, with concrete options the human can pick from and an open field for anything the options miss. Do not dump five paragraphs of prose questions into the transcript: it is slower to answer, easier to skim past, and it is the single biggest difference between this and the original Teamwork interview.
+
+One batch per topic below, in order. After each answer, push back on anything vague instead of filling the gap with an assumption.
 
 **Scope & Objectives.** What outcome, not what activity. Push until it is checkable: "reduce p95 latency under 200ms on the replay dataset", not "improve performance". If the user's phrasing is an activity, ask what changes in the world when it succeeds.
 
@@ -52,9 +54,11 @@ Choose the orchestration shape that fits. Do not default to the most elaborate o
 
 Be honest about the decomposition. If the parts are coupled, choosing Distributed Coding buys conflicts, not speed.
 
+**If you pick Distributed Coding, say so explicitly.** It is the only pattern that runs Workers concurrently, it is the only pattern where ownership attribution actually matters, and the ownership hooks report loudly when they cannot attribute a claim to a specific Worker.
+
 ## Step 4 — Write the charter
 
-Write it to `.teamwork/campaign.json` in the working directory. This file activates the ownership hook, so it must be well formed:
+Write it to `.teamwork/campaign.json` in the working directory. This file activates the ownership hooks, so it must be well formed:
 
 ```json
 {
@@ -72,24 +76,88 @@ Write it to `.teamwork/campaign.json` in the working directory. This file activa
 }
 ```
 
+The charter is the **only** place these two values are set. There is no plugin-level setting that feeds them: `integrity_mode` and `ownership_lease_minutes` are decided in this interview and read straight out of the charter by the runtime. Do not tell the user to look for a switch in the plugin settings page — there isn't one, on purpose.
+
+The hooks read three fields, and nothing happens until the first two line up:
+
+| Field | Read by | Effect |
+|---|---|---|
+| `approved` | both ownership hooks | must be `true` before the hooks arm at all |
+| `phase` | both ownership hooks | must be `"execution"` before the hooks arm at all |
+| `ownership_lease_minutes` | ownership hooks | how long a write claim survives without activity |
+| `pattern` | `ownership-lock.mjs` | `distributed-coding` turns on the attribution warning |
+| `integrity_mode` | `session-context.mjs` | injects the mode constraints at session start |
+| `objective` / `acceptance_criteria` | `session-context.mjs` | injected at session start so a resumed session does not drift |
+
 Also ensure `.teamwork/` is gitignored — it holds runtime campaign state, not source.
 
 ## Step 5 — Get approval
 
 Present the charter to the human and wait. Switch to Plan mode if you want a structured review before execution. Do not set `approved: true` yourself, and do not start Phase 2 on an assumption of consent.
 
+**Warn the user about the countdown.** The platform's question panel auto-continues after five minutes by default, picking a direction on its own if nobody answers. That would let the approval gate pass itself. Tell the user to turn off **Settings → General → Ask-questions auto-continue** before running a campaign, or to keep the countdown paused by hovering over the panel while they read the charter.
+
 ## Step 6 — Hand off
 
 After approval, set `approved: true` and `phase: "execution"`, then:
 
 1. **Sentinel** reviews the charter and returns CLEARED or BLOCKED. Do not proceed past BLOCKED — resolve it with the human instead.
-2. **Orchestrator** decomposes into milestones with a dependency graph and a file-ownership table.
-3. Set the goal with `/goal` so ZCode's per-round verification keeps the campaign converging without you typing "continue":
+2. **Orchestrator** decomposes into milestones with a dependency graph and a file-ownership table, and **writes the result to `.teamwork/plan.json`**. This is not optional: the plan is the only thing that keeps parallel Workers off each other, and a plan that lives only in the conversation dies with the conversation.
+3. Set the goal with `/goal` so the platform's per-round verification keeps the campaign converging without you typing "continue":
+
    ```
-   /goal <objective> — verified by <verification method>
+   /goal <objective> — all acceptance criteria satisfied,
+   and every milestone in .teamwork/verifications/ has a verification record
+   written by an agent that did not implement it,
+   and .teamwork/final-audit.md exists and concludes ACHIEVED
    ```
-   Goal Mode demands real evidence (changed files, command output, test results) and will not accept a plan or a confident summary. That is the convergence loop; do not reimplement it.
-4. Run the pattern. Dispatch Workers in parallel only where the ownership table allows.
+
+   The goal text names **files**, not intentions. The per-round verifier only accepts real evidence — changed files, command output, test results — and it cannot see whether you actually dispatched a Critic. Making the verification records into files is what turns the role protocol from a promise into a check the runtime performs. Without a final-audit file, the goal simply does not pass.
+
+4. Run the pattern following the **`teamwork-execute`** skill, which fixes the dispatch loop and the escalation rules. Dispatch Workers in parallel only where the ownership table allows.
+
+### `.teamwork/plan.json`
+
+```json
+{
+  "sentinel": "CLEARED",
+  "milestones": [
+    {
+      "id": "m1",
+      "deliverable": "<checkable artifact>",
+      "files": ["src/a.ts"],
+      "blocked_by": [],
+      "verified_by": "critic | challenger | auditor",
+      "status": "pending | in-progress | done",
+      "verified": false
+    }
+  ],
+  "ownership": {"src/a.ts": "m1"}
+}
+```
+
+`ownership` maps every in-scope file to exactly one milestone. `status` and `verified` are updated as the campaign runs, so a session that restarts can see where it left off.
+
+### When something fails
+
+Do not improvise the recovery. Follow this ladder, and stop climbing at the first rung that works:
+
+1. **Retry the role once, unchanged.** Most failures are transient.
+2. **Still failing: send it back to the Orchestrator** to replan — re-split the milestone, reassign the file, or change which role verifies it. Update `plan.json`.
+3. **Still failing: stop and escalate to the human.** Run `/goal pause`, then report: which milestone is stuck, what was tried, what the blocker actually is, which milestones are already done, and what has been spent so far.
+
+**Never let a failing role loop.** The per-round verifier will happily open another round, so an unresolved failure becomes a burn-the-budget loop with no progress. Two retries and a replan is the ceiling; after that it is a human decision.
+
+## Verification artifacts
+
+The rule "a milestone is not complete until an agent that did not implement it has verified it" is only as strong as the evidence left behind. So the evidence is a file:
+
+- **`.teamwork/verifications/<milestone>.md`** — written by the verifier, **never by the Worker that implemented the milestone**. It records the milestone id, the role that verified it, the exact command or check that was run, the raw output, and the verdict (`SOUND` / `FALSIFIED` / `SURVIVED` / `REPRODUCED` / `DIVERGED` / `BLOCKED`).
+- **`.teamwork/final-audit.md`** — written by the Success Auditor, judging the charter rather than the milestone list, concluding `ACHIEVED`, `PARTIALLY ACHIEVED`, or `NOT ACHIEVED`.
+
+A milestone with no verification file counts as unverified no matter how green its tests are. That is the whole point: a campaign that skips verification used to look exactly like one that did it properly, and now it does not.
+
+Run `/teamwork status` at any time to see which milestones still lack a verification record.
 
 ## The invariant
 

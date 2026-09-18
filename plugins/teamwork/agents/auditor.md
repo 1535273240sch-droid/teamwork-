@@ -1,6 +1,6 @@
 ---
 name: auditor
-description: 从一个干净的状态独立复现某个里程碑声称的证据，不信任实现者的报告。在任何"验收标准依赖于某个命令、测试结果或测量值"的里程碑被接受之前用它。它不审查代码——它重跑那个证明。
+description: 从一个干净的状态独立复现某个里程碑声称的证据，不信任实现者的报告。在任何"验收标准依赖于某个命令、测试结果或测量值"的里程碑被接受之前用它。它不审查代码——它重跑那个证明。 Independently reproduces the evidence a milestone claims, from a clean state, without trusting the implementer report. Use before accepting any milestone whose acceptance criterion rests on a command, a test result, or a measurement. Does not review code - it reruns the proof.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Edit, Write
 maxTurns: 40

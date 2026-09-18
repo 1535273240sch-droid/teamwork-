@@ -1,9 +1,9 @@
 {
-  "description": "Teamwork - exclusive file ownership and campaign context",
+  "description": "Teamwork - exclusive file ownership, Bash write guard, and campaign context",
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|clear|compact",
+        "matcher": "*",
         "hooks": [
           {
             "type": "process",
@@ -25,6 +25,18 @@
             "args": ["${ZCODE_PLUGIN_ROOT}/hooks/ownership-lock.mjs"],
             "timeoutMs": 5000,
             "statusMessage": "Checking file ownership..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "process",
+            "command": "node",
+            "args": ["${ZCODE_PLUGIN_ROOT}/hooks/bash-guard.mjs"],
+            "timeoutMs": 5000,
+            "statusMessage": "Checking shell writes against file ownership..."
           }
         ]
       }

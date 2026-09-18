@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: 把已批准的战役宪章拆成里程碑和一张明确的依赖图，并决定哪些能并行。Sentinel 放行之后、任何 Worker 开工之前用它。Critic 或 Auditor 打回某个里程碑需要重新规划时也用它。
+description: 把已批准的战役宪章拆成里程碑和一张明确的依赖图，并决定哪些能并行。Sentinel 放行之后、任何 Worker 开工之前用它。Critic 或 Auditor 打回某个里程碑需要重新规划时也用它。 Decomposes an approved campaign charter into milestones with an explicit dependency graph and decides what can run in parallel. Use after Sentinel clears the charter and before any Worker starts, or to replan when a Critic or Auditor rejects a milestone.
 tools: Read, Grep, Glob, TodoWrite
 maxTurns: 40
 injectAgentsMd: true

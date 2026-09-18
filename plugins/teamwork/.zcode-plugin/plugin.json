@@ -1,27 +1,15 @@
 {
   "name": "teamwork",
-  "version": "0.1.0",
-  "description": "Collaborative multi-agent team for repo-scale migrations, simulation, and deep research. Pairs with Goal Mode for verification and convergence.",
+  "version": "0.2.0",
+  "description": "Collaborative multi-agent team for repo-scale migrations, simulation, and deep research. Scoping interview, eight roles, exclusive file ownership enforced for both editor and shell writes, and file-backed verification. Pairs with Goal Mode for convergence.",
   "author": {
     "name": "Teamwork for ZCode"
   },
+  "homepage": "https://github.com/1535273240sch-droid/teamwork-",
+  "repository": "https://github.com/1535273240sch-droid/teamwork-",
   "license": "MIT",
-  "keywords": ["multi-agent", "orchestration", "long-horizon", "verification"],
+  "keywords": ["multi-agent", "orchestration", "long-horizon", "verification", "file-ownership"],
   "commands": "commands",
   "skills": "skills",
-  "agents": "agents",
-  "userConfig": {
-    "integrity_mode": {
-      "title": "Default integrity mode",
-      "description": "development | demo | benchmark. Recorded into the campaign charter during the scoping interview.",
-      "type": "string",
-      "default": "development"
-    },
-    "ownership_lease_minutes": {
-      "title": "File ownership lease (minutes)",
-      "description": "How long a write claim on a file survives without activity before another worker may reclaim it.",
-      "type": "number",
-      "default": 10
-    }
-  }
+  "agents": "agents"
 }

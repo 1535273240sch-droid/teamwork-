@@ -1,6 +1,6 @@
 ---
 name: explorer
-description: 只读的代码库调研。用来定位某个行为在哪里实现、梳理调用链和入口点、追踪依赖，或者在决策之前收集证据。因为它绝不改动任何东西，所以可以安全地并行多发几个。需要改文件时不要用它。
+description: 只读的代码库调研。用来定位某个行为在哪里实现、梳理调用链和入口点、追踪依赖，或者在决策之前收集证据。因为它绝不改动任何东西，所以可以安全地并行多发几个。需要改文件时不要用它。 Read-only codebase research. Use it to locate where a behaviour is implemented, trace call chains and entry points, map dependencies, or gather evidence before a decision. Safe to run several in parallel because it never changes anything. Not for work that needs edits.
 tools: Read, Grep, Glob, WebFetch, WebSearch
 disallowedTools: Edit, Write, Bash
 maxTurns: 50

@@ -1,6 +1,6 @@
 ---
 name: sentinel
-description: Teamwork 战役的起点关卡。在任何实现工作开始之前必须先跑这个角色，用来审查战役宪章是否完整、是否已获人工批准。完整性模式需要强制执行时也用它。不要用它做代码修改或调研。
+description: Teamwork 战役的起点关卡。在任何实现工作开始之前必须先跑这个角色，用来审查战役宪章是否完整、是否已获人工批准。完整性模式需要强制执行时也用它。不要用它做代码修改或调研。 The starting gate for a Teamwork campaign. Runs before any implementation work to check that the charter is complete and human-approved, and to enforce the integrity mode. Not for code changes or research.
 tools: Read, Grep, Glob, TodoWrite
 maxTurns: 30
 injectAgentsMd: true

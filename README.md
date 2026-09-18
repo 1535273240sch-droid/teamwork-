@@ -24,6 +24,7 @@
 - [安装](#安装)
 - [安装后验证](#安装后验证)
 - [使用流程](#使用流程)
+- [验证留痕](#验证留痕)
 - [八个角色](#八个角色)
 - [五种编排形态](#五种编排形态)
 - [三种完整性模式](#三种完整性模式)
@@ -32,6 +33,7 @@
 - [成本](#成本)
 - [已知限制](#已知限制)
 - [排错](#排错)
+- [命名与版本](#命名与版本)
 - [设计说明](#设计说明)
 - [开发与测试](#开发与测试)
 - [许可](#许可)
@@ -50,7 +52,7 @@
 |---|---|
 | **开工前把目标定死** | Phase 1 访谈（`/teamwork` 命令 + skill），产出可审阅的宪章，**你批准了才动** |
 | **角色分工 + 独立验证** | 8 个自定义 subagent，职责刻意不重叠，**做和验强制分离** |
-| **并行时不互相踩踏** | `PreToolUse` 钩子实现的文件独占锁，两个 Worker 不可能同时改一个文件 |
+| **并行时不互相踩踏** | 两个 `PreToolUse` 钩子实现的文件独占锁，编辑工具和 shell 写入都拦 |
 
 它要解决的具体问题是这一种：
 
@@ -63,6 +65,8 @@ agent 说"做完了" → 你问"验证了吗" → "验证了" → 你实际一�
 Teamwork 的结构强制把"做"和"验"分开，规矩很硬：
 
 > **一个里程碑，在没有参与实现它的 agent 验证之前，不算完成。**
+
+而且从 0.2.0 起，这条规矩**有落盘证据**：验证角色必须把结论写进 `.teamwork/verifications/<里程碑>.md`，终审写进 `.teamwork/final-audit.md`，`/goal` 的目标文本直接点名这两个文件。于是"验没验"不再是一句承诺，而是运行时每轮都要查的东西。见[验证留痕](#验证留痕)。
 
 验证循环本身**没有重写**——那是 ZCode 自带的 **Goal Mode** 干的活，比用 `Stop` 钩子硬凑要可靠。见[设计说明](#设计说明)。
 
@@ -91,8 +95,9 @@ Teamwork 把上面每一条都变成有结构的：
 | **开工前** | 直接开干 | **先访谈 → 写宪章 → 人批准了才动** |
 | **分工** | 通用 agent 什么都干 | **8 个专职角色，职责刻意不重叠** |
 | **验证** | 谁做的谁报结果 | **做和验强制分离**，且拆成四种不同问法 |
-| **并行** | 可能撞同一个文件 | **文件独占锁，物理上撞不上** |
-| **目标漂移** | 跑久了就忘了要干嘛 | **宪章在每次会话启动时重新注入** |
+| **验证证据** | 报告里的一句话 | **落盘成文件，`/goal` 每轮检查它在不在** |
+| **并行** | 可能撞同一个文件 | **文件独占锁，编辑工具与 shell 写入都拦** |
+| **目标漂移** | 跑久了就忘了要干嘛 | **宪章 + 计划在每次会话启动时重新注入** |
 | **收敛** | 你得一直打"继续" | Goal Mode **每轮自动验证、自动继续** |
 | **什么时候算完** | agent 说"做完了" | **Success Auditor 对着宪章终审** |
 | **成本** | 低 | **高一个到两个数量级** |
@@ -130,7 +135,7 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 - **跨几十个文件的重构 / 迁移**——这是它的主场。Orchestrator 拆里程碑 + 分配文件所有权，Worker 并行开工不打架。
 - **需要独立验证的结论**——量化策略、实验结果、研究结论。**Challenger 专门负责证伪**，这是它最值钱的地方。
 - **反复失败的任务**——单个 agent 一遍遍自信地说"做完了"但实际没做完。**这是最典型的适用信号。**
-- **长周期任务**——几小时到几天。Goal Mode 跨会话记住目标，你不用守着。
+- **长周期任务**——几小时到几天。Goal Mode 跨会话记住目标，计划落盘，你不用守着。
 - **你没法亲自验证的东西**——你自己不熟悉细节，只能依赖它的报告。**这种情况必须有独立验证**，否则你就是在信一句没法核对的话。
 
 ### ❌ 不适合（请直接用普通方式做）
@@ -153,11 +158,14 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 .
 ├── marketplace.json              ← 市场清单（ZCode 从这里读）
 ├── package.json
+├── CHANGELOG.md
 ├── LICENSE
 ├── README.md
-├── tests/                        ← 131 项自动化校验
-│   ├── frontmatter.test.mjs
-│   └── hooks.test.mjs
+├── .github/workflows/test.yml    ← CI：Node 18/20/22 × Linux/macOS/Windows
+├── examples/                     ← 真实战役轨迹（见下方说明）
+├── tests/                        ← 251 项自动化校验
+│   ├── frontmatter.test.mjs      ← 160 项结构校验
+│   └── hooks.test.mjs            ← 91 项行为校验
 └── plugins/teamwork/             ← 插件本体
     ├── .zcode-plugin/plugin.json ← 插件清单
     ├── agents/                   ← 八个角色
@@ -171,11 +179,20 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
     │   └── success-auditor.md
     ├── hooks/
     │   ├── hooks.json            ← 钩子注册（自动发现，勿在清单重复声明）
-    │   ├── ownership-lock.mjs    ← 文件独占锁
-    │   └── session-context.mjs   ← 会话启动时注入宪章
-    ├── skills/teamwork/SKILL.md  ← Phase 1：Specify What, Not How
-    └── commands/teamwork.md      ← /teamwork <目标>
+    │   ├── _lib.mjs              ← 两个所有权钩子共用的锁/租约/路径逻辑
+    │   ├── ownership-lock.mjs    ← 文件独占锁（Edit / Write）
+    │   ├── bash-guard.mjs        ← shell 写入守卫（Bash）
+    │   └── session-context.mjs   ← 会话启动时注入宪章与计划
+    ├── skills/
+    │   ├── teamwork/SKILL.md     ← Phase 1：Specify What, Not How
+    │   └── teamwork-execute/SKILL.md ← Phase 2：调度循环与升级协议
+    └── commands/
+        ├── teamwork.md           ← /teamwork <目标>
+        ├── teamwork-status.md    ← /teamwork-status
+        └── teamwork-end.md       ← /teamwork-end
 ```
+
+> `_lib.mjs` 不是可选的：`ownership-lock.mjs` 和 `bash-guard.mjs` **必须共用同一把互斥锁、同一份租约表、同一套路径规范化**。两边一旦分叉，它们合起来才堵上的那个洞就会重新打开。
 
 ---
 
@@ -206,8 +223,10 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 **Settings → Plugins → Create → Add marketplace**，填本地路径（也可以直接把文件夹拖进去）：
 
 ```
-<你克隆下来的路径>/zcode-teamwork
+<你克隆下来的路径>/teamwork-
 ```
+
+> ⚠️ 注意目录名末尾**有一个连字符**（仓库就叫 `teamwork-`），写成本文的 `<路径>/zcode-teamwork` 是装不上的。见[命名与版本](#命名与版本)。
 
 本地目录**不需要联网**。ZCode 那个公共插件目录才是从 GitHub 拉的，网络不通不影响你。
 
@@ -222,13 +241,19 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 三个地方核对：
 
 **1. Settings → Plugins → 点 teamwork**
-应列出：8 个 agents、1 个 skill、1 个 command、1 个 hook。
+应列出：8 个 agents、2 个 skills、3 个 commands、3 个 hook 脚本。
 
 **2. Settings → Subagents**
 应出现 **Plugin subagents** 分组，里面有 `sentinel` / `orchestrator` / `explorer` / `worker` / `critic` / `challenger` / `auditor` / `success-auditor`。
 
 **3. Settings → Hooks**
-应出现一条**只读**条目：`PreToolUse`，matcher `Write|Edit`，来源指向插件目录。
+应出现**三条只读**条目，来源都指向插件目录：
+
+| 事件 | matcher | 作用 |
+|---|---|---|
+| `SessionStart` | `*` | 注入宪章与计划 |
+| `PreToolUse` | `Write\|Edit` | 文件独占锁 |
+| `PreToolUse` | `Bash` | shell 写入守卫 |
 
 三条都对了，就装好了。
 
@@ -244,7 +269,7 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 
 ### 第 2 步：回答访谈
 
-它进入 **Phase 1（Specify What, Not How）**，一次问完五个议题：
+它进入 **Phase 1（Specify What, Not How）**，**用交互式问答面板**（不是一坨纯文本问题）分五批问你：
 
 | 议题 | 要问到什么程度 |
 |---|---|
@@ -256,23 +281,50 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 
 **这一步别糊弄。** 访谈问得越具体，后面烧的钱越少。特别是第 3 条——如果你答"跑一下测试"，等于没有验证标准，后面四个验证角色全部无从下手。
 
-### 第 3 步：它会推荐模式，然后等你批准
+### ⚠️ 第 3 步之前：关掉「提问自动继续」
+
+**这一条会直接吃掉你的批准关卡。**
+
+ZCode 的问答面板默认带 **5 分钟倒计时**，到点没人回答，agent 会**按自己的判断挑一个方向继续推进**（历史记录里标为"未回答，已自动继续"）。而 Teamwork 的设计是「你批准之前绝不动工」——如果倒计时把批准问题自动放行了，这道关卡就形同虚设。
+
+两个办法，任选其一：
+
+- 到 **设置 → 常规 → 提问自动继续** 把它关掉（之后所有提问都会一直等你）
+- 或者读到宪章时**把鼠标移到问答面板上**——任何动作都会让倒计时**永久停止**
+
+（倒计时只作用于这类普通提问，**权限请求和计划审批本来就会一直等**，不受影响。）
+
+### 第 4 步：它会推荐模式，然后等你批准
 
 它会推荐一个 **integrity mode**（默认 `development`）和一个 **pattern**（五种编排形态之一），把宪章写到目标项目的 `.teamwork/campaign.json`，**然后停下来**。
 
-**在你批准之前它不会派任何 agent。**
+**在你批准之前它不会派任何 agent，独占锁也还没武装**——钩子要求 `approved: true` 且 `phase: "execution"` 同时成立才生效。
 
-### 第 4 步：批准之后
+### 第 5 步：批准之后
 
 1. **Sentinel** 先审宪章，返回 `CLEARED` 或 `BLOCKED`
    - **BLOCKED 就是真卡住了**，它会列出缺什么。在起点被拦下来，比跑三小时才发现目标没定义便宜得多
-2. **Orchestrator** 拆里程碑 + 出依赖图 + **分配文件所有权表**
-3. 它把目标设成 `/goal`，之后 ZCode **每轮自动验证、自动继续**，你不用再打 "continue"
+2. **Orchestrator** 拆里程碑 + 出依赖图 + **分配文件所有权表**，并**写进 `.teamwork/plan.json`**
+   - 这一步不是可选的。所有权表只活在对话里，会话一崩就没了——而这东西恰恰是并行 Worker 不打架的唯一依据
+3. 它把目标设成 `/goal`，目标文本**点名验证文件**：
+   ```
+   /goal <objective> — 所有验收标准满足，
+   且 .teamwork/verifications/ 下每个里程碑都有非实现者的验证记录，
+   且 .teamwork/final-audit.md 的结论为 ACHIEVED
+   ```
+   之后 ZCode **每轮自动验证、自动继续**，你不用再打 "continue"。**没有终审文件，目标模式就不判定完成。**
 4. Worker 开工；写文件撞车会被独占锁拦下
 
-### 第 5 步：收尾
+### 第 6 步：收尾
 
-**Success Auditor** 对着**最初的宪章**（不是里程碑列表）做终审，判断该做的到底做没做，专门防"指标漂移"——优化了可测的那个东西，而原目标悄悄溜走。
+**Success Auditor** 对着**最初的宪章**（不是里程碑列表）做终审，写 `.teamwork/final-audit.md`，判断该做的到底做没做，专门防"指标漂移"。
+
+### 运行期间的两个命令
+
+| 命令 | 作用 |
+|---|---|
+| `/teamwork-status` | 只读报告：里程碑进度、当前租约、**验证缺口**、最近的冲突事件 |
+| `/teamwork-end` | 归档到 `.teamwork/history/<时间戳>/` 并解除钩子（会先问你确认） |
 
 ### 顺手做一件事
 
@@ -286,12 +338,37 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 
 ---
 
+## 验证留痕
+
+从 0.2.0 起，**"验过了"必须留下文件**：
+
+| 文件 | 谁写 | 内容 |
+|---|---|---|
+| `.teamwork/verifications/<里程碑>.md` | **验证角色**（绝不可是实现它的 Worker） | 里程碑 id、验证角色、原样命令、原始输出、结论（`SOUND` / `FALSIFIED` / `SURVIVED` / `REPRODUCED` / `DIVERGED` / `BLOCKED`） |
+| `.teamwork/final-audit.md` | Success Auditor | 对着宪章逐条判定，结论 `ACHIEVED` / `PARTIALLY ACHIEVED` / `NOT ACHIEVED` |
+
+**一个里程碑没有验证文件，就算未验证**，测试再绿也一样。
+
+### 为什么这件事值得单独说
+
+因为**它把"靠自觉"焊成了"被检查"**。
+
+Goal Mode 的每轮校验只认**文件型实据**——改动的文件、命令输出、测试结果。它看不见你有没有真的派过 Critic。所以这里没有发明任何新机制，只是**把框架已有的验证文化，接到了平台已有的硬校验上**：
+
+- 角色履约 → 变成文件
+- 文件 → 变成 `/goal` 的判定条件
+- `/goal` → 由运行时每轮检查
+
+代价要说清楚：**这样产物就依赖 ZCode 的 Goal Mode**，搬到别家会降级。这是当初明确选的取舍。
+
+---
+
 ## 八个角色
 
 | 角色 | 职责 | 工具权限 |
 |---|---|---|
 | **sentinel** | 起点关卡。审宪章，返回 CLEARED / BLOCKED。强制完整性模式 | 只读 |
-| **orchestrator** | 拆里程碑、出依赖图、分配文件所有权。**不写代码** | 只读 |
+| **orchestrator** | 拆里程碑、出依赖图、分配文件所有权，写 `plan.json`。**不写代码** | 只读 |
 | **explorer** | 只读调研。报告必须带可独立核对的行号证据 | 只读 |
 | **worker** | 在自己的文件范围内实现一个里程碑 | 读写 + 命令 |
 | **critic** | 找**实现**的缺陷 | 只读 + 命令 |
@@ -317,6 +394,8 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 
 **对拆解要诚实。** 如果各部分耦合得紧，选 Distributed Coding 买来的是冲突，不是速度。
 
+**Distributed Coding 是唯一会并行跑 Worker 的形态**，也是唯一真正依赖"归属到具体 Worker"的形态。如果归属不可用，独占锁会在第一次认领时**明确告警**（见[文件独占锁](#文件独占锁)）。
+
 ---
 
 ## 三种完整性模式
@@ -331,38 +410,83 @@ Teamwork 把"验"拆成**四个不同的问题**，交给**四个不同的角色
 
 选了 `benchmark`，Success Auditor 会专门去找指标造假——**一份诚实报告的"部分达成"，比一份造假的"完整达成"有价值得多。**
 
+> **宪章是这两个值的唯一来源。** 插件设置页里**没有**对应开关，这是有意的：ZCode 只在 `.mcp.json` 里替换 `${user_config.*}`，钩子和 skill 都读不到插件配置。所以 `integrity_mode` 和 `ownership_lease_minutes` 在访谈里定，然后从宪章里读。早先版本在 `plugin.json` 里放过这两个配置项，那是**一个什么都不做的假开关**，0.2.0 已删除。
+
 ---
 
 ## 文件独占锁
 
-`hooks/ownership-lock.mjs` 挂在 `PreToolUse`（`Write|Edit`）上，当一个 Worker 要写**正被另一个 Worker 持有**的文件时，直接 deny。
+它由**两个** `PreToolUse` 钩子合起来实现，共用同一份租约表和同一把互斥锁：
+
+| 钩子 | matcher | 拦什么 |
+|---|---|---|
+| `ownership-lock.mjs` | `Write\|Edit` | 编辑工具写文件（**精确**：知道具体是哪个文件） |
+| `bash-guard.mjs` | `Bash` | shell 写文件（**尽力**：模式匹配，见下方限制） |
+
+当一个 Worker 要写**正被另一个 Worker 持有**的文件时，直接 deny。
 
 这是 Teamwork 的核心不变量：**同一时刻，两个 Worker 绝不同时碰一个文件。**
 
-### 两个刻意的设计决定
+### 为什么需要第二个钩子
 
-**1. 它有开关。**
-只在目标项目里存在 `.teamwork/campaign.json` 时才生效。没有这道门，这个钩子会去管你**每一个项目里的每一次普通编辑**——那是灾难。
+`echo x > file`、`sed -i`、`tee`、`dd of=`、`git apply`、`patch` 这些**都不经过 `Write|Edit` 钩子**。只挂一个钩子的话，shell 写入会静默绕过所有权表——而那正是框架里最贵的失败模式。
 
-想临时关掉？删掉 `campaign.json` 就回到正常 ZCode。
+所以：
+
+- **能认出目标文件时**（`> file`、`tee file`、`sed -i ... file`、`rm`、`mv`、`cp` 的目标），照常查租约，冲突就 deny
+- **认不出目标文件时**（`git apply`、`patch`、复杂管道），**放行但附带警告**，明确说明"这次调用的独占所有权没有被强制"
+- **落在工作目录之外的路径**（`/dev/null`、`/tmp` 日志、隔壁项目）**完全不管**——它们不属于这个 campaign
+
+**宁可漏报，不可误杀。** 一次误拦普通构建命令，会把 Worker 训练成跟钩子对抗，那比漏一条警告糟得多。
+
+### 三个刻意的设计决定
+
+**1. 它有开关，而且要两道。**
+只在目标项目里存在 `.teamwork/campaign.json`，**且 `approved: true`、`phase: "execution"`** 时才生效。少一道，钩子就会去管你**每一个项目里的每一次普通编辑**——那是灾难；或者在访谈还没结束时就武装起来——那是语义错误。
+
+想临时关掉？删掉 `campaign.json`，或者用 `/teamwork-end` 归档，就回到正常 ZCode。
 
 **2. 它是租约，不是硬锁。**
 认领超过 `ownership_lease_minutes`（默认 10 分钟）无活动就过期，可以被别的 Worker 回收。否则一个崩掉的 Worker 会把整个 campaign 永久死锁。
 
-### ⚠️ 一个你必须知道的限制
+**3. 临界区有互斥。**
+租约表的"读—判—写"三步曾经是**非原子**的：两个 Worker 同时认领不同文件时，都读到旧表、各自写回，后写者把先写者的认领覆盖掉——**先一个 Worker 的锁凭空消失**。而"并行 Worker"正是这个插件存在的理由。
 
-持有者身份是**尽力识别**的，优先级如下：
+现在临界区跑在 `mkdir` 做的互斥里（`mkdir` 在所有平台上都是原子的），拿不到锁就短暂自旋，超时就**直接放行**（记账永远不能阻塞工具调用）。持锁进程被杀掉也不会死锁——超过 10 秒的锁目录会被抢占。
+
+修复前后的实测（12 个进程同时认领 12 个不同文件，跑 5 轮）：
+
+| | 结果 |
+|---|---|
+| **无互斥（修复前）** | 5 轮里 4 轮丢锁，最差一轮 12 个只剩 **9** 个 |
+| **有互斥（修复后）** | 5 轮全部 **12/12** |
+
+### ⚠️ 两个你必须知道的限制
+
+**限制一：shell 写入的覆盖是不完整的。**
+
+`bash-guard.mjs` 不解析 shell，它做的是模式匹配。所以它**认不出**的情况包括：变量拼接的目标路径（`> $OUT/file`）、通配符（`> src/*.log`）、命令替换、`find -exec`、脚本内部的写入（`bash build.sh` 里干了什么它看不见）。这些一律走"放行 + 警告"。
+
+**唯一可靠的做法**是让 Worker 用 `Edit` / `Write` 改源码——那条路径是精确的。这条规则已经写进 `worker.md` 的硬约束，以及 `critic.md` 的检查清单（Critic 会用 `git diff` 检查改动是不是都来自 `Edit`/`Write`）。
+
+**限制二：持有者身份是尽力识别，而且可能完全失效。**
+
+优先级如下：
 
 ```
 $TEAMWORK_OWNER_TOKEN  →  agent_id / agent_type  →  transcript_path 哈希  →  session_id
 ```
 
-**问题在于：ZCode 的钩子文档没有记载 `PreToolUse` 载荷里存在 per-subagent 标识符。** 如果确实没有，独占锁会退化成**会话内先到先得**——它**仍然能防止两个 Worker 交错写同一个文件**（这正是要保证的），但**没法把某次认领归属到具名的 Worker**。
+**问题在于：ZCode 的钩子文档没有记载 `PreToolUse` 载荷里存在 per-subagent 标识符。** 如果确实没有，而 `transcript_path` 又是**整个会话共用**的，那么所有 Worker 会解析成**同一个 owner**，`held.owner !== owner` 永远为 false——**冲突检查完全失效，是零保护，不是"退化成先到先得"。**
 
-需要精确归属的话，两个办法：
+**早先版本在这一点上说了不准确的话，已更正。** 现在钩子会**检测这个状态并明确告警**：当归属只能落到最弱的一档、且形态是 `distributed-coding` 时，第一次认领就会往上下文里写一条警告，直说"独占所有权未生效"。
 
-- 给每个 worker 设 `TEAMWORK_OWNER_TOKEN` 环境变量
-- 或者在编排流程里加一步显式认领
+要拿到精确归属，唯一可靠的路子是：
+
+- **一个 Worker 一个 ZCode 进程**，在那个进程的环境里设 `TEAMWORK_OWNER_TOKEN`
+  （注意：**不是**在派发时给子 agent 设环境变量——钩子是 ZCode 进程的子进程，继承的是 ZCode 的环境；子 agent 是进程内派发的，改不了它。这一点早先的文档写错过。）
+
+否则就退而求其次：**手工保证每个 Worker 的文件范围互不重叠**，然后用 `/teamwork-status` 核对。
 
 ---
 
@@ -386,13 +510,43 @@ Phase 1 结束时会写到 `<目标项目>/.teamwork/campaign.json`：
 }
 ```
 
-其中三个字段会被钩子实际读取：
+哪些字段真的被读：
 
 | 字段 | 谁读 | 作用 |
 |---|---|---|
-| `ownership_lease_minutes` | `ownership-lock.mjs` | 认领过期时间 |
+| `approved` | 两个所有权钩子 | **必须为 `true`** 才武装，否则完全空转 |
+| `phase` | 两个所有权钩子 | **必须为 `"execution"`** 才武装 |
+| `ownership_lease_minutes` | 两个所有权钩子 | 认领过期时间（钳制在 1–10080 分钟） |
+| `pattern` | `ownership-lock.mjs` | `distributed-coding` 会打开归属告警 |
 | `integrity_mode` | `session-context.mjs` | 会话启动时注入模式约束 |
 | `objective` / `acceptance_criteria` | `session-context.mjs` | 会话启动时注入宪章，防止跑偏 |
+| `out_of_scope` | `session-context.mjs` | 会话启动时注入，防止范围悄悄长大 |
+
+### `.teamwork/plan.json`
+
+Orchestrator 产出，会话恢复时由 `session-context.mjs` 重新注入：
+
+```json
+{
+  "sentinel": "CLEARED",
+  "milestones": [
+    {
+      "id": "m1",
+      "deliverable": "可检查的产物",
+      "files": ["src/a.ts"],
+      "blocked_by": [],
+      "verified_by": "critic",
+      "status": "pending | in-progress | done",
+      "verified": false
+    }
+  ],
+  "ownership": {"src/a.ts": "m1"}
+}
+```
+
+### `.teamwork/events.jsonl`
+
+钩子追加的运行时事件，排障时比翻 ZCode 日志直接：`claimed` / `denied` / `expired`。`/teamwork-status` 会读它。**`denied` 出现就说明两个 Worker 真的撞上了**，值得看一眼。
 
 ---
 
@@ -420,6 +574,7 @@ Phase 1 结束时会写到 `<目标项目>/.teamwork/campaign.json`：
 2. **开工前设预算**，用 Goal Mode 的用量上限
 3. **别在小活儿上用**——这是最大的浪费来源
 4. **选对 pattern**——耦合紧的活儿硬拆成并行，买来的是冲突和重做
+5. **别让失败的里程碑空转**——升级协议写死在 `teamwork-execute` 里：重试一次 → 重新规划 → 暂停并交给人。**每个里程碑最多两轮返工**，到顶就停
 
 ### 一句话
 
@@ -435,8 +590,20 @@ Phase 1 结束时会写到 `<目标项目>/.teamwork/campaign.json`：
 | **项目级钩子不执行** | `<workspace>/.zcode/config.json` 里的 hooks 被 ZCode 当前运行时**整体忽略**。这正是本项目必须以插件形式分发的原因 |
 | **`model` / `thoughtLevel` 故意留空** | ZCode 的 `thoughtLevel` 必须和具体 `model` 一起写才生效，而且**对未知键静默忽略**——写错就是无声失效。所以默认继承会话模型。要钉模型：先去模型选择器确认合法 id，然后**两个键一起加** |
 | **自定义 subagent 仍是 Beta** | `~/.zcode/agents/` 目前仅支持 user 级 |
-| **所有权归属是尽力而为** | 见[文件独占锁](#文件独占锁)那一节 |
+| **所有权归属是尽力而为，可能完全失效** | 见[文件独占锁](#文件独占锁)。失效时钩子会**明确告警**，不会假装在保护 |
+| **shell 写入的覆盖是模式匹配的** | 变量、通配符、脚本内部的写入拦不住。用 `Edit`/`Write` 改源码才是精确路径 |
 | **没有 SessionEnd 事件** | ZCode 不提供，所以租约靠超时回收，不靠会话结束释放 |
+| **`SessionStart` 的 source 枚举未公开** | 官方文档只列了 `startup` / `clear` / `compact` 为「常见值」，没有完整的 source 列表。所以 matcher 用的是 `*`（匹配全部），对任何 source 都生效，**不依赖枚举是否完整** |
+| **没有 MultiEdit / NotebookEdit** | 已核对官方工具枚举（`Read`/`Grep`/`Glob`/`Bash`/`Edit`/`Write`/`WebFetch`/`WebSearch`/`TodoWrite`），不存在其他写入类工具。所以 `Write\|Edit` 的 matcher 是完备的 |
+| **没有真实战役样例** | `examples/` 目前只有说明和骨架，**没有伪造的轨迹**。填它需要真跑一次战役，见下 |
+
+### 关于 `examples/`
+
+**这个仓库目前没有真实使用案例，这是可信度上最大的空洞。**
+
+但**不能靠编造填**。放一份编出来的"战役轨迹"进 `examples/`，等于在一个专治"自信地报告没做到的事"的项目里，自己干那件事。
+
+`examples/README.md` 里写了这个目录该放什么、格式是什么。要填它，就跑一次真实战役，把轨迹原样导出。
 
 ---
 
@@ -448,11 +615,23 @@ Phase 1 结束时会写到 `<目标项目>/.teamwork/campaign.json`：
 **Settings → Subagents 里看不到那 8 个角色**
 → 插件没启用，或者没开新会话。
 
-**Settings → Hooks 里没有那条 PreToolUse**
+**Settings → Hooks 里没有那三条**
 → 同上。另外确认 `node` 在 PATH 上：`node --version`。
 
 **编辑文件没有被独占锁拦截**
-→ 这是正常的，除非目标项目里有 `.teamwork/campaign.json`。钩子在无 campaign 时**完全空转**。
+→ 先确认目标项目里有 `.teamwork/campaign.json`，**且里面 `approved: true`、`phase: "execution"`**。缺任何一个，钩子完全空转——这是设计，不是 bug。
+
+**钩子告警说"ownership attribution is unavailable"**
+→ 这是**真话**，不是误报。见[文件独占锁](#文件独占锁)的"限制二"。要么改成进程级隔离 + `TEAMWORK_OWNER_TOKEN`，要么手工保证文件范围不重叠。
+
+**Bash 写文件被拒绝了**
+→ 说明你写的文件正被别的 Worker 持有。改用 `Edit`/`Write`，或者换文件，或者把冲突报给 orchestrator。**不要循环重试。**
+
+**Bash 写文件放行了但带了警告**
+→ 那个命令的目标文件认不出来（`git apply`、`patch`、复杂管道）。这次调用的独占所有权**没有被强制**。改成用 `Edit`/`Write` 就精确了。
+
+**`/goal` 一直不判定完成**
+→ 大概率是缺 `.teamwork/final-audit.md`，或者某个里程碑缺验证记录。跑 `/teamwork-status` 看**验证缺口**那一节，它会点名。
 
 **钩子报错 / 不触发**
 → 看日志：`~/.zcode/cli/log/zcode-<日期>.jsonl`。钩子执行失败会记 `hook.run.failed`；项目级配置被忽略会记 `config_project_hooks_ignored`。
@@ -460,8 +639,35 @@ Phase 1 结束时会写到 `<目标项目>/.teamwork/campaign.json`：
 **改了插件后不生效**
 → 钩子配置是会话启动时快照的。**开新会话。** 从本地目录装的，还要在 Marketplace sources 面板里刷新该 marketplace。
 
+**插件检查更新没提示**
+→ 「最新版本」取自 `marketplace.json` 的 `version`，「已安装版本」取自 `plugin.json`。**两边必须同步升**，否则代码更新了也不会提示。测试里有这一条断言。
+
 **想知道插件的结构对不对**
 → 跑 `npm test`（见下）。
+
+---
+
+## 命名与版本
+
+这个仓库里四个名字**故意不完全一致**，值得说明白，免得你踩坑：
+
+| 位置 | 名字 | 为什么 |
+|---|---|---|
+| GitHub 仓库 | `teamwork-` | 建仓库时定的，**末尾带连字符**。本地安装路径要用它 |
+| marketplace 清单 | `teamwork-market` | 市场名，显示在 Plugins 页的 Personal 分组标题上 |
+| package.json | `zcode-teamwork-market` | npm 包名，`private: true`，不发布 |
+| 插件名 | `teamwork` | 用户实际安装、启用、在 `/teamwork` 里敲的那个 |
+
+**唯一有实际影响的是仓库名末尾那个连字符**——本地安装路径写错就装不上，README 的[方式二](#方式二本地目录)已经按实际名字写。
+
+### 版本号
+
+版本号在**两个**地方，必须同步：
+
+- `plugins/teamwork/.zcode-plugin/plugin.json` — 已安装版本
+- `marketplace.json` — 客户端拿它跟已安装版本比，决定要不要提示更新
+
+**漏改 `marketplace.json`，用户就永远收不到更新提示。** 测试里有断言守着这一条。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -501,30 +707,44 @@ npm run test:frontmatter  # 只测结构
 npm run test:hooks        # 只测钩子行为
 ```
 
-**131 项校验**，分两组：
+**251 项校验**，分两组。CI 在 Node 18/20/22 × Linux/macOS/Windows 上跑。
 
-### `tests/frontmatter.test.mjs` — 105 项结构校验
+### `tests/frontmatter.test.mjs` — 160 项结构校验
 
 ZCode **会静默忽略无法识别的 frontmatter 键**，所以一个拼写错误不会报错，只会悄悄失效。这组测试断言：
 
-- 每个角色的必填键齐全（`name` / `description`）
+- 每个角色的必填键齐全（`name` / `description`），且**描述带英文部分**（面向国际 marketplace）
 - **没有未知键**
 - **工具名全是 ZCode 的**（`Read` / `Edit`），不是别家的（`read_file` / `shell_command`）——后者会静默地什么都拿不到
 - `thoughtLevel` 没有脱离 `model` 单独出现（那样会被静默忽略）
 - 角色名不与 ZCode 内置的 `general-purpose` / `explore` 冲突
-- 清单里 `marketplace.json` 的版本号与 `plugin.json` 一致（**版本号不一致会导致不推送更新**）
-- 配置与协议文件纯 ASCII
+- 命令文件名符合 ZCode 的命令名规则（否则静默不注册）
+- **`hooks.json` 里引用的每个脚本都真的存在**（否则运行期静默失败）
+- `hooks.json` 的 `PreToolUse` **同时覆盖 `Write|Edit` 和 `Bash`**
+- `hooks.json` 的 `SessionStart` matcher 是**与 source 无关**的（`*`）
+- `plugin.json` **不含 `userConfig`**（ZCode 送不到钩子和 skill，只能是假开关）
+- `plugin.json` / `marketplace.json` / `package.json` 的版本号**三处一致**，且 `CHANGELOG.md` 里有对应条目
+- 清单里的 `source` 路径**真的存在**
+- 配置与协议文件**纯 ASCII**（扫描整个 `hooks/` 目录，不只是固定清单）
+- **frontmatter 解析器本身**也被断言（解析器错了，上面每一条都没意义）
 
-### `tests/hooks.test.mjs` — 26 项行为校验
+### `tests/hooks.test.mjs` — 91 项行为校验
 
-真起 node 子进程，喂符合 ZCode 文档契约的 JSON 到 stdin，断言 stdout 协议与磁盘上的租约文件：
+真起 node 子进程，喂符合 ZCode 文档契约的 JSON 到 stdin，断言 stdout 协议与磁盘上的状态：
 
 - 无 campaign 时**完全空转**（不干扰日常使用）
-- 首次认领放行并落盘
+- **`approved: false` 或 `phase != execution` 时仍然空转**（访谈期间不武装）
+- 首次认领放行并落盘，且记录 owner 与来源
 - **冲突时正确 deny，且错误信息点出文件和持有者**
-- 同持有者重复写放行
-- 不同文件互不影响（并行 Worker 不受干扰）
+- 同持有者重复写放行；不同文件互不影响（并行 Worker 不受干扰）
 - **租约过期可回收**（崩掉的 Worker 不会死锁）
+- **并发竞态回归**：12 个进程用**同步屏障**同时释放，3 轮全部 12/12
+  （屏障是必须的：只靠进程启动抖动**复现不出**这个竞态，早先版本因此是个没牙的测试）
+- 持有互斥锁时第二个进程**主动退让**而不是写坏表；**过期锁会被抢占**
+- 租约时长的边界（0 / 负数 / 字符串 / 小数 / 超大值）
+- **原型污染防御**、**残留 `.tmp` 清理**、**事件日志**
+- **macOS 大小写不敏感与 NFD/NFC 归一**（通过桩掉 `process.platform` 在任意平台验证）
+- **Bash 守卫**：非写入命令空转、工作目录外忽略、`>` / `sed -i` / `tee` 撞锁被拒、认不出目标的原地编辑**放行但警告**、shell 写入会认领所有权（后续别的 Worker 的 `Edit` 会被拦）
 - **畸形 stdin 绝不阻塞工具调用**（记账永远不能成为工具调用失败的理由）
 
 ---
