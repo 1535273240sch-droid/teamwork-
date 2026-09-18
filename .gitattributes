@@ -1,0 +1,7 @@
+# These files are read by the ZCode runtime and by hook processes.
+# Keep line endings stable so a checkout on Windows cannot alter them.
+* text=auto eol=lf
+*.mjs text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf

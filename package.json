@@ -1,0 +1,16 @@
+{
+  "name": "zcode-teamwork-market",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Teamwork for ZCode - collaborative multi-agent campaigns with independent verification",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/frontmatter.test.mjs && node tests/hooks.test.mjs",
+    "test:frontmatter": "node tests/frontmatter.test.mjs",
+    "test:hooks": "node tests/hooks.test.mjs"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

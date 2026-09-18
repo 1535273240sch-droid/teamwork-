@@ -1,0 +1,27 @@
+{
+  "name": "teamwork",
+  "version": "0.1.0",
+  "description": "Collaborative multi-agent team for repo-scale migrations, simulation, and deep research. Pairs with Goal Mode for verification and convergence.",
+  "author": {
+    "name": "Teamwork for ZCode"
+  },
+  "license": "MIT",
+  "keywords": ["multi-agent", "orchestration", "long-horizon", "verification"],
+  "commands": "commands",
+  "skills": "skills",
+  "agents": "agents",
+  "userConfig": {
+    "integrity_mode": {
+      "title": "Default integrity mode",
+      "description": "development | demo | benchmark. Recorded into the campaign charter during the scoping interview.",
+      "type": "string",
+      "default": "development"
+    },
+    "ownership_lease_minutes": {
+      "title": "File ownership lease (minutes)",
+      "description": "How long a write claim on a file survives without activity before another worker may reclaim it.",
+      "type": "number",
+      "default": 10
+    }
+  }
+}
